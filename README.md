@@ -1,7 +1,6 @@
 # 🔍 AI Research Agent v0.1.0
 
-A production-ready AI research agent built with **Rust** and the **Rig framework**. This project is designed for a YouTube tutorial teaching beginners how to build their first AI agent.
-
+A production-ready AI research agent built with **Rust** and the **Rig framework**. 
 ![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![AI](https://img.shields.io/badge/AI-Ollama-green.svg)
