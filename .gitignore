@@ -46,3 +46,6 @@ __pycache__/
 # Nix / build outputs
 result
 /flake.lock
+
+# Local documentation
+GIT_USAGE.md
