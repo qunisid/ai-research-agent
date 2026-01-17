@@ -1,26 +1,3 @@
-//! # AI Research Agent
-//! 
-//! A production-ready AI research agent built with the Rig framework.
-//! 
-//! This application demonstrates:
-//! - Building AI agents in Rust
-//! - Using Ollama for local LLM inference
-//! - Web search integration with DuckDuckGo
-//! - CLI design with clap
-//! - Structured logging with tracing
-//! - Error handling best practices
-//! 
-//! ## Quick Start
-//! ```bash
-//! cargo run -- "What are the latest developments in Rust?"
-//! ```
-
-// =============================================================================
-// MODULE DECLARATIONS
-// =============================================================================
-// Rust requires explicit module declarations. Each `mod` statement tells
-// the compiler to look for a file with that name (e.g., config.rs).
-
 /// Configuration management
 mod config;
 
@@ -30,31 +7,19 @@ mod agent;
 /// Web search and other tools
 mod tools;
 
-// =============================================================================
-// IMPORTS
-// =============================================================================
 use anyhow::Result;
 use clap::Parser;
+use std::io::{self, Write};
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use crate::agent::ResearchAgent;
 use crate::config::Config;
 
-// =============================================================================
-// CLI ARGUMENTS
-// =============================================================================
-/// # Rust Concept: Derive Macros with Clap
-/// 
-/// Clap's derive feature lets us define CLI arguments as a struct.
-/// The macros automatically generate argument parsing code.
-/// 
-/// - #[command(...)]: Configures the overall program
-/// - #[arg(...)]: Configures individual arguments
 #[derive(Parser, Debug)]
 #[command(
     name = "ai-research-agent",
-    author = "Your Name",
+    author = "qunisid",
     version = "0.1.0",
     about = "An AI-powered research assistant that searches the web and summarizes findings",
     long_about = r#"
@@ -84,12 +49,18 @@ EXAMPLES:
 )]
 struct Args {
     /// The research topic or question to investigate
+    #[arg(help = "The topic to research", value_name = "QUERY")]
+    query: Option<String>,
+
+    /// Interactive mode - ask questions one by one
     #[arg(
-        help = "The topic to research",
-        value_name = "QUERY"
+        short = 'i',
+        long = "interactive",
+        help = "Enter interactive REPL mode",
+        default_value = "false"
     )]
-    query: String,
-    
+    interactive: bool,
+
     /// The Ollama model to use (overrides OLLAMA_MODEL env var)
     #[arg(
         short = 'm',
@@ -98,7 +69,7 @@ struct Args {
         env = "OLLAMA_MODEL"
     )]
     model: Option<String>,
-    
+
     /// Quick search mode - just search, don't synthesize
     #[arg(
         short = 'q',
@@ -107,7 +78,7 @@ struct Args {
         default_value = "false"
     )]
     quick: bool,
-    
+
     /// Verbose output (debug logging)
     #[arg(
         short = 'v',
@@ -118,39 +89,22 @@ struct Args {
     verbose: bool,
 }
 
-// =============================================================================
-// MAIN FUNCTION
-// =============================================================================
-/// # Rust Concept: The #[tokio::main] Attribute
-/// 
-/// Rust's main() function is synchronous by default.
-/// #[tokio::main] transforms it into an async function by:
-/// 1. Creating a Tokio runtime
-/// 2. Running our async main inside it
-/// 
-/// This is equivalent to:
-/// ```
-/// fn main() {
-///     let rt = tokio::runtime::Runtime::new().unwrap();
-///     rt.block_on(async { /* our code */ });
-/// }
-/// ```
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse command-line arguments
     // Clap handles --help, --version, and error messages automatically
     let args = Args::parse();
-    
+
     // Initialize logging
     init_logging(args.verbose)?;
-    
+
     info!("AI Research Agent starting up...");
-    
+
     // Load configuration from environment/.env file
     let mut config = Config::from_env()?;
-    
+
     // Override model if specified on command line
-    // 
+    //
     // # Rust Concept: Option Type
     // Option<T> is either Some(value) or None.
     // if let Some(x) = option { } is a concise way to handle this.
@@ -158,34 +112,105 @@ async fn main() -> Result<()> {
         info!(model = %model, "Using model from command line");
         config.model = model;
     }
-    
+
     // Validate configuration
     config.validate()?;
-    
+
     info!(
         model = %config.model,
         host = %config.ollama_host,
         "Configuration loaded"
     );
-    
+
     // Create the research agent
-    let agent = ResearchAgent::new(config);
-    
-    // Execute the query
-    let result = if args.quick {
-        // Quick mode: just search, no synthesis
-        info!("Running in quick search mode");
-        agent.quick_search(&args.query).await
+    let mut agent = ResearchAgent::new(config);
+
+    // Check if interactive mode or single query
+    if args.interactive {
+        run_interactive(&mut agent).await?;
+    } else if let Some(query) = args.query {
+        // Execute the query
+        let result = if args.quick {
+            info!("Running in quick search mode");
+            agent.quick_search(&query).await
+        } else {
+            info!("Running full research mode");
+            agent.chat(&query).await
+        };
+
+        handle_result(result)?;
     } else {
-        // Full mode: search + AI synthesis
-        info!("Running full research mode");
-        agent.research(&args.query).await
-    };
-    
-    // Handle the result
+        // No query provided and not interactive - show help
+        eprintln!("Error: Please provide a query or use --interactive mode");
+        eprintln!("\nUsage:");
+        eprintln!("  ai-research-agent \"Your question here\"");
+        eprintln!("  ai-research-agent --interactive");
+        eprintln!("\nRun with --help for more options.");
+        anyhow::bail!("No query provided");
+    }
+
+    info!("Research completed successfully");
+    Ok(())
+}
+
+/// Run interactive REPL mode
+async fn run_interactive(agent: &mut ResearchAgent) -> Result<()> {
+    println!("\n{}", "=".repeat(60));
+    println!("AI Research Agent - Interactive Mode");
+    println!("{}", "=".repeat(60));
+    println!("Type your question and press Enter.");
+    println!("Commands: 'clear' to clear history, 'quit' or 'exit' to quit.");
+    println!("{}\n", "=".repeat(60));
+
+    loop {
+        print!("You: ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        // Handle commands
+        match input.to_lowercase().as_str() {
+            "quit" | "exit" => {
+                println!("Goodbye!");
+                break;
+            }
+            "clear" => {
+                agent.clear_history();
+                println!("Conversation history cleared.\n");
+                continue;
+            }
+            "" => continue,
+            _ => {}
+        }
+
+        // Process the question
+        match agent.chat(input).await {
+            Ok(response) => {
+                println!("\n{}", "=".repeat(60));
+                println!("AI:");
+                println!("{}", response);
+                println!("{}\n", "=".repeat(60));
+            }
+            Err(e) => {
+                eprintln!("\n❌ Error: {}", e);
+                if e.to_string().contains("connection refused") {
+                    eprintln!("💡 Tip: Make sure Ollama is running (ollama serve)");
+                } else if e.to_string().contains("model") {
+                    eprintln!("💡 Tip: Make sure the model is installed (ollama pull llama3.2)");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle the result and print response
+fn handle_result(result: Result<String>) -> Result<()> {
     match result {
         Ok(response) => {
-            // Print the result to stdout
             println!("\n{}", "=".repeat(60));
             println!("RESEARCH RESULTS");
             println!("{}\n", "=".repeat(60));
@@ -193,12 +218,9 @@ async fn main() -> Result<()> {
             println!("\n{}", "=".repeat(60));
         }
         Err(e) => {
-            // Print a user-friendly error message
             error!(error = %e, "Research failed");
-            
-            // Give helpful suggestions based on common errors
             eprintln!("\n❌ Research failed: {}", e);
-            
+
             if e.to_string().contains("connection refused") {
                 eprintln!("\n💡 Tip: Make sure Ollama is running:");
                 eprintln!("   ollama serve");
@@ -206,80 +228,56 @@ async fn main() -> Result<()> {
                 eprintln!("\n💡 Tip: Make sure the model is installed:");
                 eprintln!("   ollama pull llama3.2");
             }
-            
-            // Return the error to set non-zero exit code
             return Err(e);
         }
     }
-    
-    info!("Research completed successfully");
     Ok(())
 }
 
-// =============================================================================
-// LOGGING INITIALIZATION
-// =============================================================================
-/// Initialize the tracing subscriber for structured logging.
-/// 
-/// # Rust Concept: Early Returns
-/// 
-/// The `?` operator returns early from the function if there's an error.
-/// This is common in initialization code where failure should abort.
 fn init_logging(verbose: bool) -> Result<()> {
     // Set log level based on verbose flag
     let level = if verbose { Level::DEBUG } else { Level::INFO };
-    
-    // Build the subscriber
-    // 
-    // # Rust Concept: Builder Pattern
-    // Many Rust libraries use builders for configuration.
-    // Each method modifies the builder and returns it for chaining.
+
     let subscriber = FmtSubscriber::builder()
         .with_max_level(level)
-        .with_target(true)  // Show the module that logged
+        .with_target(true) // Show the module that logged
         .with_thread_names(false)
         .with_file(false)
         .with_line_number(false)
         .finish();
-    
+
     // Set as the global default
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|e| anyhow::anyhow!("Failed to set logging subscriber: {}", e))?;
-    
+
     Ok(())
 }
 
-// =============================================================================
-// INTEGRATION TESTS
-// =============================================================================
-/// # Rust Concept: Integration Tests
-/// 
-/// These tests check that all components work together.
-/// They're placed in the same module but could also be in tests/ directory.
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_args_parsing() {
         // Test that CLI args parse correctly
         let args = Args::parse_from(["test", "What is Rust?"]);
-        assert_eq!(args.query, "What is Rust?");
+        assert_eq!(args.query, Some("What is Rust?".to_string()));
         assert!(!args.quick);
         assert!(!args.verbose);
     }
-    
+
     #[test]
     fn test_args_with_flags() {
         let args = Args::parse_from([
             "test",
             "--quick",
             "--verbose",
-            "--model", "llama3.2",
-            "Test query"
+            "--model",
+            "llama3.2",
+            "Test query",
         ]);
-        
-        assert_eq!(args.query, "Test query");
+
+        assert_eq!(args.query, Some("Test query".to_string()));
         assert!(args.quick);
         assert!(args.verbose);
         assert_eq!(args.model, Some("llama3.2".to_string()));

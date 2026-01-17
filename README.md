@@ -1,4 +1,4 @@
-# 🔍 AI Research Agent
+# 🔍 AI Research Agent v0.1.0
 
 A production-ready AI research agent built with **Rust** and the **Rig framework**. This project is designed for a YouTube tutorial teaching beginners how to build their first AI agent.
 
@@ -6,13 +6,14 @@ A production-ready AI research agent built with **Rust** and the **Rig framework
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![AI](https://img.shields.io/badge/AI-Ollama-green.svg)
 
-Repository: https://github.com/aarambh-darshan/ai-research-agent
+Repository: https://github.com/qunisid/ai-research-agent
 
 ## ✨ Features
 
 - 🤖 **Local LLM Support** - Uses Ollama for privacy-friendly, free AI inference
 - 🔎 **Web Search** - DuckDuckGo integration (no API key required!)
 - 🛠️ **Tool-Using Agent** - Demonstrates agentic AI patterns
+- 💬 **Interactive Mode** - REPL-style continuous conversation with memory
 - 📚 **Beginner Friendly** - Extensive comments explaining Rust patterns
 - 🚀 **Production Ready** - Proper error handling, logging, and CLI
 
@@ -46,7 +47,7 @@ Repository: https://github.com/aarambh-darshan/ai-research-agent
 
 ```bash
 # Clone the repository
-git clone https://github.com/aarambh-darshan/ai-research-agent.git
+git clone https://github.com/qunisid/ai-research-agent.git
 cd ai-research-agent
 
 # Copy environment template
@@ -58,6 +59,7 @@ cargo build --release
 
 ### Usage
 
+**Single Query Mode:**
 ```bash
 # Basic research query
 cargo run -- "What are the latest developments in Rust async runtime?"
@@ -70,8 +72,43 @@ cargo run -- --model deepseek-v3.2 "Machine learning in Rust"
 
 # Verbose output
 cargo run -- --verbose "WebAssembly trends"
+```
 
-# Show help
+**Interactive Mode (REPL):**
+```bash
+cargo run -- --interactive
+# or
+cargo run -- -i
+```
+
+In interactive mode:
+- Type your question and press Enter
+- Ask follow-up questions (AI remembers context)
+- Type `clear` to clear conversation history
+- Type `quit` or `exit` to quit
+
+```bash
+$ cargo run -- -i
+
+============================================================
+AI Research Agent - Interactive Mode
+============================================================
+Type your question and press Enter.
+Commands: 'clear' to clear history, 'quit' or 'exit' to quit.
+============================================================
+
+You: What is Rust?
+[AI responds with search results...]
+
+You: Why is it popular?
+[AI remembers previous context and answers...]
+
+You: quit
+Goodbye!
+```
+
+**Show help:**
+```bash
 cargo run -- --help
 ```
 
